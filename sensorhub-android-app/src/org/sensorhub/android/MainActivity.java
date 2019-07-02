@@ -44,6 +44,7 @@ import org.sensorhub.android.comm.ble.BleConfig;
 import org.sensorhub.android.comm.ble.BleNetwork;
 import org.sensorhub.api.common.Event;
 import org.sensorhub.api.common.IEventListener;
+import org.sensorhub.api.common.SensorHubException;
 import org.sensorhub.api.module.IModuleConfigRepository;
 import org.sensorhub.api.module.ModuleEvent;
 import org.sensorhub.api.sensor.ISensorDataInterface;
@@ -53,6 +54,7 @@ import org.sensorhub.impl.client.sost.SOSTClient.StreamInfo;
 import org.sensorhub.impl.client.sost.SOSTClientConfig;
 import org.sensorhub.impl.driver.flir.FlirOneCameraConfig;
 import org.sensorhub.impl.module.InMemoryConfigDb;
+import org.sensorhub.impl.module.ModuleRegistry;
 import org.sensorhub.impl.persistence.GenericStreamStorage;
 import org.sensorhub.impl.persistence.MaxAgeAutoPurgeConfig;
 import org.sensorhub.impl.persistence.StreamStorageConfig;
@@ -118,6 +120,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
     URL sosUrl = null;
     URL sostUrl = null;
     boolean showVideo;
+
 
     private ServiceConnection sConn = new ServiceConnection()
     {
@@ -323,6 +326,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
         sensorhubConfig.add(sosConfig);
     }
 
+
     private boolean isPushingSensor(Sensors sensor)
     {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(MainActivity.this);
@@ -358,6 +362,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
         return false;
     }
 
+
     private SensorDataProviderConfig createDataProviderConfig(AndroidSensorsConfig sensorConfig)
     {
         SensorDataProviderConfig dataProviderConfig = new SensorDataProviderConfig();
@@ -370,6 +375,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
 
         return dataProviderConfig;
     }
+
 
     private StreamStorageConfig createStreamStorageConfig(AndroidSensorsConfig sensorConfig)
     {
@@ -414,6 +420,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
         streamStorageConfig.storageConfig = storageConfig;
         return streamStorageConfig;
     }
+
 
     private SensorConfig createSensorConfig(Sensors sensor)
     {
@@ -516,6 +523,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
 
         return sensorConfig;
     }
+
 
     protected void addStorageConfig(SensorConfig sensorConf, StreamStorageConfig storageConf)
     {
@@ -626,6 +634,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
         sensorhubConfig.add(storageConf);
     }
 
+
     protected void addSosServerConfig(SOSServiceConfig sosConf, SensorDataProviderConfig dataProviderConf)
     {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(MainActivity.this);
@@ -731,6 +740,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
 
         sosConf.dataProviders.add(dataProviderConf);
     }
+
 
     protected void addSosTConfig(SensorConfig sensorConf, String sosUser, String sosPwd)
     {
@@ -914,6 +924,45 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
                     proxySensorConfig.sosUseWebsockets = true;
                     proxySensorConfig.autoStart = true;
                     proxySensorConfigs.add(proxySensorConfig);
+
+                    // register and "start" new sensor, data stream doesn't begin until someone requests data
+                    ModuleRegistry mr = boundService.sensorhub.getInstance().getModuleRegistry();
+
+                    try {
+                        mr.loadModule(proxySensorConfig);
+                        Log.d("OSHApp", "Loading Proxy Sensor " + proxySensorConfig.name);
+                        sensorhubConfig.add(proxySensorConfig);
+                        SensorDataProviderConfig dataProviderConfig = new SensorDataProviderConfig();
+                        dataProviderConfig.name = proxySensorConfig.name;
+                        dataProviderConfig.sensorID = proxySensorConfig.id;
+                        dataProviderConfig.offeringID = proxySensorConfig.id + "-sos";
+                        dataProviderConfig.enabled = true;
+
+                        SOSServiceWithIPCConfig sosConf = (SOSServiceWithIPCConfig) mr.getModuleById("SOS_SERVICE").getConfiguration();
+                        sosConf.dataProviders.add(dataProviderConfig);
+
+                        //                        mr.loadModule(proxySensorConfig);
+//                        mr.startModule(proxySensorConfig.id);
+
+                        // reload SOS?
+//                        mr.stopModule(sosConf.id);
+//                        mr.loadModule(sosConf);
+//                        mr.startModule(sosConf.id);
+
+                        boundService.stopSensorHub();
+                        Thread.sleep(2000);
+                        Log.d("OSHApp", "Starting Sensorhub Again");
+                        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                        updateConfig(PreferenceManager.getDefaultSharedPreferences(MainActivity.this), runName);
+                        sostClients.clear();
+                        boundService.startSensorHub(sensorhubConfig, showVideo, MainActivity.this);
+                        if (boundService.hasVideo())
+                            textArea.setBackgroundColor(0x80FFFFFF);
+//                        showRunNamePopup();
+                    } catch (SensorHubException | InterruptedException e) {
+                        Log.e("OSHApp", "Error Loading Proxy Sensor", e);
+                    }
+
                 }
             }
         };
@@ -1055,6 +1104,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
         testIntent.putStringArrayListExtra("properties", testProperties);
         sendBroadcast(testIntent);
     }
+
 
     @Override
     public void handleEvent(Event<?> e)
