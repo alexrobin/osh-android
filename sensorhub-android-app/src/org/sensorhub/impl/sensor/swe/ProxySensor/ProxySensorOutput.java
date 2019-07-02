@@ -22,9 +22,10 @@ public class ProxySensorOutput extends SWEVirtualSensorOutput
 
     @Override
     public void publishNewRecord(DataBlock dataBlock) {
-        Log.d(TAG, "publishNewRecord");
-
-        super.publishNewRecord(dataBlock);
+        if (isListening) {
+            Log.d(TAG, "publishNewRecord");
+            super.publishNewRecord(dataBlock);
+        }
     }
 
     @Override
